@@ -19,7 +19,7 @@ def parse_bool(value) -> bool:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Hybrid face edit pipeline.")
-    parser.add_argument("--input", default="novo_dataset")
+    parser.add_argument("--input", default="dataset")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--crop-metadata", default="")
     parser.add_argument("--description", default="")

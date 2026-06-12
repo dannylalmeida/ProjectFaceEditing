@@ -133,7 +133,7 @@ def export_single_image(input_path: Path, output_dir: Path, display_scale: float
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Gera Face Mesh numerada e delineado automatico da regiao editavel.")
-    parser.add_argument("--input", type=str, default="", help="Imagem/pasta de entrada. Se omitido, usa novo_dataset e 38000.")
+    parser.add_argument("--input", type=str, default="", help="Imagem/pasta de entrada. Se omitido, usa dataset.")
     parser.add_argument("--output-dir", type=str, default="", help="Diretorio de saida.")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto", help="Mantido por compatibilidade.")
     parser.add_argument("--display-scale", type=float, default=2.0, help="Escala visual dos numeros.")

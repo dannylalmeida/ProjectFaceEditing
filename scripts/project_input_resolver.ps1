@@ -4,12 +4,11 @@ function Get-ProjectRandomDatasetImage {
     )
 
     $datasetRoots = @(
-        (Join-Path $ProjectRoot "novo_dataset"),
-        (Join-Path $ProjectRoot "38000")
+        (Join-Path $ProjectRoot "dataset")
     ) | Where-Object { Test-Path $_ -PathType Container }
 
     if (-not $datasetRoots -or $datasetRoots.Count -eq 0) {
-        throw "As pastas de imagens nao existem: novo_dataset, 38000"
+        throw "A pasta de imagens dataset nao existe."
     }
 
     $imageFiles = foreach ($datasetRoot in $datasetRoots) {
@@ -33,7 +32,7 @@ function Resolve-ProjectInputImage {
     }
 
     $normalizedInput = $InputImage.Replace("/", "\").TrimEnd("\")
-    if ($normalizedInput -in @("dataset", ".\dataset", "novo_dataset", ".\novo_dataset")) {
+    if ($normalizedInput -in @("dataset", ".\dataset")) {
         return Get-ProjectRandomDatasetImage -ProjectRoot $ProjectRoot
     }
 

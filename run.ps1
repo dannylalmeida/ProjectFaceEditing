@@ -4,7 +4,7 @@
     [string]$Comando = "landmarks",
 
     [Alias("InputImage")]
-    [string]$Imagem = "novo_dataset",
+    [string]$Imagem = "dataset",
 
     [Alias("OutputDir")]
     [string]$Saida = "",
@@ -122,7 +122,7 @@ function Show-ProjectHelp {
     Write-Host "Defaults:"
     Write-Host "  comando sem prompt: landmarks"
     Write-Host "  comando com prompt: styleclip"
-    Write-Host "  imagem: novo_dataset"
+    Write-Host "  imagem: dataset"
     Write-Host "  passos StyleCLIP: 5"
     Write-Host "  inversor: auto"
     Write-Host ""

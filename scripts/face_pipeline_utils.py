@@ -12,8 +12,8 @@ from pathlib import Path
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
-DATASET_DIR = PROJECT_DIR / "novo_dataset"
-EXTRA_INPUT_DIRS = (PROJECT_DIR / "38000",)
+DATASET_DIR = PROJECT_DIR / "dataset"
+EXTRA_INPUT_DIRS = ()
 DEFAULT_IMAGE_PATH = PROJECT_DIR / "inputs" / "image.png"
 MODEL_CACHE_DIR = PROJECT_DIR / "models" / "facexlib"
 OUTPUT_DIR = PROJECT_DIR / "outputs"
@@ -23,8 +23,6 @@ SUPPORTED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 DATASET_ALIASES = {
     "dataset",
     ".\\dataset",
-    "novo_dataset",
-    ".\\novo_dataset",
 }
 REGION_LABELS = {
     "pele": [1],

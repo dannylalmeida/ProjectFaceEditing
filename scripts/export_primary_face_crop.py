@@ -19,7 +19,7 @@ def main() -> None:
         "--input",
         type=str,
         default="",
-        help="Imagem de entrada. Se omitido, 'dataset' ou 'novo_dataset', usa imagens de novo_dataset e 38000. Tambem podes passar a pasta 38000 diretamente.",
+        help="Imagem, pasta ou alias dataset. Se omitido, usa a pasta dataset.",
     )
     parser.add_argument("--output-dir", type=str, required=True, help="Diretorio onde guardar o crop.")
     parser.add_argument("--margin-scale", type=float, default=0.15, help="Margem extra aplicada a bbox da face.")

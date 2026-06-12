@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Audita a edicao local de nariz em todas as imagens do dataset."
     )
-    parser.add_argument("--input-dir", default="", help="Pasta de imagens. Vazio usa novo_dataset + 38000.")
+    parser.add_argument("--input-dir", default="", help="Pasta de imagens. Vazio usa dataset.")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Pasta raiz do relatorio.")
     parser.add_argument("--description", default=DEFAULT_DESCRIPTION)
     parser.add_argument("--edit-region", default="nose")

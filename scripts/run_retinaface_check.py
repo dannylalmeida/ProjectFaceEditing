@@ -203,7 +203,7 @@ def main() -> None:
         "--input",
         type=str,
         default="",
-        help="Imagem de entrada. Se omitido, usa imagens de novo_dataset e 38000.",
+        help="Imagem de entrada. Se omitido, usa imagens da pasta dataset.",
     )
     parser.add_argument(
         "--output-dir",

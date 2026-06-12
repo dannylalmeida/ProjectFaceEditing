@@ -74,7 +74,7 @@ def _requests_decrease(description: str) -> bool:
 
 @dataclass
 class HybridPipelineConfig:
-    input_image: str | Path = "novo_dataset"
+    input_image: str | Path = "dataset"
     output_dir: str | Path = PROJECT_DIR / "outputs" / "hybrid_edit"
     crop_metadata: str | Path | None = None
     description: str = ""
