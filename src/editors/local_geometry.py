@@ -26,6 +26,7 @@ class MouthGeometryIntent:
     feather: int
     reason: str
     corner_lift: float = 0.0
+    uniform_lip_height: bool = False
 
 
 WIDTH_DECREASE_TERMS = (
@@ -390,6 +391,7 @@ def resolve_mouth_geometry_intent(description: str) -> MouthGeometryIntent | Non
         feather=feather,
         reason="+".join(dict.fromkeys(reasons)),
         corner_lift=corner_lift,
+        uniform_lip_height=bool(full_lips or thin_lips),
     )
 
 
@@ -1763,30 +1765,55 @@ def _warp_mouth_lip_height(base_bgr, target_mask, anchor_points, cv2, np, scale_
         upper_skin_alpha = upper_skin_alpha.copy()
         upper_skin_alpha[_skin_cutoff_y:, :] = 0.0
 
+    left_corner = _point_from_anchors(anchor_points, "left_corner", (x1, y1 + mouth_h * 0.55))
+    right_corner = _point_from_anchors(anchor_points, "right_corner", (x2 - 1, y1 + mouth_h * 0.55))
+    upper_lip = _point_from_anchors(anchor_points, "upper_lip", ((x1 + x2) * 0.5, y1 + mouth_h * 0.38))
+    lower_lip = _point_from_anchors(anchor_points, "lower_lip", ((x1 + x2) * 0.5, y1 + mouth_h * 0.66))
+    upper_outer = _point_from_anchors(anchor_points, "upper_outer", ((x1 + x2) * 0.5, y1 + mouth_h * 0.26))
+    lower_outer = _point_from_anchors(anchor_points, "lower_outer", ((x1 + x2) * 0.5, y1 + mouth_h * 0.78))
+    left_x = float(left_corner[0])
+    right_x = float(right_corner[0])
+    anchor_w = max(1.0, abs(right_x - left_x), mouth_w * 0.72)
+    upper_inner_y = float(upper_lip[1])
+    lower_inner_y = float(lower_lip[1])
+    upper_outer_y = min(float(upper_outer[1]), upper_inner_y - 1.0)
+    lower_outer_y = max(float(lower_outer[1]), lower_inner_y + 1.0)
+    center_y = (upper_inner_y + lower_inner_y) * 0.5
+    upper_depth = max(2.0, abs(upper_inner_y - upper_outer_y), mouth_h * 0.085)
+    lower_depth = max(2.0, abs(lower_outer_y - lower_inner_y), mouth_h * 0.085)
+    upper_band_y = upper_outer_y * 0.58 + upper_inner_y * 0.42
+    lower_band_y = lower_inner_y * 0.40 + lower_outer_y * 0.60
+
     grid_y, grid_x = np.indices((image_h, image_w), dtype=np.float32)
     edge_alpha = _inner_feather_mask(working_mask, max(5, feather), cv2, np)
-    focus_x = np.exp(-0.5 * ((grid_x - center_x) / max(3.0, mouth_w * 0.60)) ** 2)
-    vertical_focus = np.exp(-0.5 * ((grid_y - center_y) / max(3.0, mouth_h * 0.76)) ** 2)
-    weight = np.power(np.clip(edge_alpha * focus_x * vertical_focus, 0.0, 1.0), 0.62)
+    x_pad = anchor_w * 0.075
+    x_soft = max(3.0, anchor_w * 0.065)
+    lip_x1 = min(left_x, right_x) - x_pad
+    lip_x2 = max(left_x, right_x) + x_pad
+    length_focus = np.minimum(
+        _smoothstep((grid_x - lip_x1) / x_soft, np),
+        _smoothstep((lip_x2 - grid_x) / x_soft, np),
+    )
+    upper_vertical = np.exp(-0.5 * ((grid_y - upper_band_y) / max(2.5, upper_depth * 1.35)) ** 2)
+    lower_vertical = np.exp(-0.5 * ((grid_y - lower_band_y) / max(2.5, lower_depth * 1.35)) ** 2)
+    upper_focus = upper_vertical * (grid_y <= center_y + lower_depth * 0.22)
+    lower_focus = lower_vertical * (grid_y >= center_y - upper_depth * 0.22)
+    vertical_focus = np.maximum(upper_focus, lower_focus)
+    weight = np.power(np.clip(edge_alpha * length_focus * vertical_focus, 0.0, 1.0), 0.62)
 
     delta = float(scale_y) - 1.0
+    effective_scale_y = float(np.clip(scale_y, 1.0, 1.46)) if delta > 0 else float(np.clip(scale_y, 0.74, 1.0))
+    side_scale_y = np.full_like(grid_y, effective_scale_y, dtype=np.float32)
     if delta > 0:
-        upper_scale_y = float(np.clip(1.0 + delta * 1.40, 1.0, 1.75))
-        lower_scale_y = float(np.clip(1.0 + delta * 0.35, 1.0, 1.25))
-        side_scale_y = np.where(grid_y < center_y, upper_scale_y, lower_scale_y).astype(np.float32)
-        lower_side = (grid_y >= center_y).astype(np.float32)
-        weight *= 1.0 - lower_side * 0.12
         if np.any(inner_guard_alpha):
-            weight *= 1.0 - inner_guard_alpha * 0.40
+            weight *= 1.0 - inner_guard_alpha * 0.42
         if np.any(upper_skin_alpha):
             weight *= 1.0 - upper_skin_alpha * 0.20
         if np.any(corner_guard_alpha):
-            weight *= 1.0 - corner_guard_alpha * 0.65
-    else:
-        effective_scale_y = float(np.clip(1.0 + delta * 0.86, 0.76, 1.0))
-        side_scale_y = np.full_like(grid_y, effective_scale_y, dtype=np.float32)
+            weight *= 1.0 - corner_guard_alpha * 0.32
     scaled_source_y = center_y + (grid_y - center_y) / side_scale_y
     disp_y = (grid_y - scaled_source_y) * weight
+    disp_x = np.zeros_like(grid_x, dtype=np.float32)
 
     source_x = np.clip(grid_x - disp_x, 0, image_w - 1).astype(np.float32)
     source_y = np.clip(grid_y - disp_y, 0, image_h - 1).astype(np.float32)
@@ -1843,7 +1870,7 @@ def _warp_mouth_lip_height(base_bgr, target_mask, anchor_points, cv2, np, scale_
         if np.any(hard_skin):
             warped[hard_skin] = base_bgr[hard_skin]
     if np.any(corner_guard_alpha):
-        corner_restore = np.clip(corner_guard_alpha * 0.70, 0.0, 0.70)[..., None]
+        corner_restore = np.clip(corner_guard_alpha * 0.42, 0.0, 0.42)[..., None]
         warped = (
             base_bgr.astype(np.float32) * corner_restore
             + warped.astype(np.float32) * (1.0 - corner_restore)
@@ -1865,7 +1892,7 @@ def _warp_mouth_lip_height(base_bgr, target_mask, anchor_points, cv2, np, scale_
         change_mask = _attenuate_mask_by_alpha(change_mask, upper_skin_alpha, np, strength=1.10)
         change_mask[upper_skin_alpha > 0.68] = 0
     if np.any(corner_guard_alpha):
-        change_mask = _attenuate_mask_by_alpha(change_mask, corner_guard_alpha, np, strength=0.75)
+        change_mask = _attenuate_mask_by_alpha(change_mask, corner_guard_alpha, np, strength=0.38)
     return warped, change_mask
 
 
@@ -1905,7 +1932,7 @@ def _warp_smile_corners_wide(base_bgr, target_mask, anchor_points, cv2, np, stre
     existing_smile = float(np.clip(((center_y - corner_y_mean) / max(1.0, anchor_h)) / 0.8, 0.0, 1.0))
     lift_adapt = max(0.35, 1.0 - existing_smile * 0.62)
     widen_adapt = max(0.82, 1.0 - existing_smile * 0.16)
-    open_widen_damping = 1.0 - open_factor * 0.52
+    open_widen_damping = 1.0 - open_factor * 0.36
     open_lift_damping = 1.0 - open_factor * 0.90
     lift_px = max(0.35, min(anchor_w * 0.020 * float(strength), mouth_h * 0.10)) * lift_adapt * open_lift_damping
     widen_px = max(2.0, min(anchor_w * 0.120 * float(strength), mouth_w * 0.19)) * widen_adapt * open_widen_damping
@@ -2241,6 +2268,7 @@ def apply_mouth_geometry_with_landmarks(
     inpaint_radius: int = 3,
     keepout_mask=None,
     corner_lift: float = 0.0,
+    uniform_lip_height: bool = False,
 ):
     if not np.any(target_mask):
         return base_bgr, target_mask
@@ -2273,22 +2301,34 @@ def apply_mouth_geometry_with_landmarks(
             keepout_mask=keepout_mask,
         )
     else:
-        # Single unified Gaussian warp, with an adaptive vertical pivot so the
-        # lower lip gains volume without pulling the skin below the mouth into it.
-        # Protected regions are restored from the original after the warp.
-        edited, change_mask = warp_masked_region_with_smooth_geometry(
-            base_bgr,
-            target_mask,
-            cv2,
-            np,
-            scale_x=eff_scale_x,
-            scale_y=eff_scale_y,
-            feather=feather,
-            center_y_ratio=mouth_center_y_ratio,
-            lower_extension_ratio=0.0,
-            keepout_mask=keepout_mask,
-            clean_background=False,
-        )
+        if uniform_lip_height and abs(eff_scale_y - 1.0) > 0.01:
+            edited, change_mask = _warp_mouth_lip_height(
+                base_bgr,
+                target_mask,
+                anchor_points,
+                cv2,
+                np,
+                scale_y=eff_scale_y,
+                feather=feather,
+                keepout_mask=keepout_mask,
+            )
+        else:
+            # Single unified Gaussian warp, with an adaptive vertical pivot so the
+            # lower lip gains volume without pulling the skin below the mouth into it.
+            # Protected regions are restored from the original after the warp.
+            edited, change_mask = warp_masked_region_with_smooth_geometry(
+                base_bgr,
+                target_mask,
+                cv2,
+                np,
+                scale_x=eff_scale_x,
+                scale_y=eff_scale_y,
+                feather=feather,
+                center_y_ratio=mouth_center_y_ratio,
+                lower_extension_ratio=0.0,
+                keepout_mask=keepout_mask,
+                clean_background=False,
+            )
 
     if not np.any(change_mask):
         return base_bgr, target_mask

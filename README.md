@@ -1,7 +1,7 @@
 # Project Face Editing
 
 Pipeline local para edicao facial controlada por texto. A ideia central e simples:
-editar apenas a regiao indicada (nariz, boca, olhos, cabelo, ...) e manter o resto
+editar apenas a regiao indicada (nariz, boca, olhos, ...) e manter o resto
 da imagem original intacto.
 
 ## Como Funciona
@@ -76,8 +76,7 @@ Edicao local (regiao explicita + descricao):
 
 # Olhos / cabelo (recolor local)
 .\run.cmd -Comando edit -Descricao "blue eyes" -EditRegion iris -UseLocalRecolor true -UseStyleCLIP false
-.\run.cmd -Comando edit -Descricao "blonde hair" -EditRegion hair -UseLocalRecolor true -UseStyleCLIP false
-```
+
 
 Edicao com StyleCLIP (quando nao ha caminho local):
 

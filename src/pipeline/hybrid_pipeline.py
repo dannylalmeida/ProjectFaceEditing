@@ -409,6 +409,7 @@ def run_hybrid_pipeline(config: HybridPipelineConfig) -> dict[str, object]:
                 inpaint_radius=3,
                 keepout_mask=mouth_keepout_mask,
                 corner_lift=mouth_geometry_intent.corner_lift,
+                uniform_lip_height=mouth_geometry_intent.uniform_lip_height,
             )
             direct_refinement = {
                 "mode": "direct_mouth_smooth_warp",
@@ -416,6 +417,7 @@ def run_hybrid_pipeline(config: HybridPipelineConfig) -> dict[str, object]:
                 "scale_y": mouth_geometry_intent.scale_y,
                 "smile_strength": mouth_geometry_intent.smile_strength,
                 "corner_lift": mouth_geometry_intent.corner_lift,
+                "uniform_lip_height": mouth_geometry_intent.uniform_lip_height,
                 "intent": mouth_geometry_intent.reason,
                 "uses_inpaint_background": False,
                 "styleclip_source_discarded_for_geometry": bool(config.use_styleclip),
