@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import random
 import shutil
 import sys
 import time
@@ -56,6 +57,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--description", default=DEFAULT_DESCRIPTION)
     parser.add_argument("--edit-region", default="nose")
     parser.add_argument("--limit", type=int, default=0, help="Limita o numero de imagens, para smoke test.")
+    parser.add_argument("--shuffle", action="store_true", help="Processa as imagens em ordem aleatoria.")
+    parser.add_argument("--seed", type=int, default=0, help="Seed da ordem aleatoria. 0 usa o relogio.")
     parser.add_argument("--resume", action="store_true", help="Reutiliza resultados ja existentes.")
     parser.add_argument("--clean", action="store_true", help="Apaga a pasta de output antes de correr.")
     parser.add_argument("--contact-sheet-width", type=int, default=4)
@@ -465,6 +468,19 @@ def main() -> None:
         image_paths = list_dataset_images(Path(args.input_dir))
     else:
         image_paths = list_dataset_images()
+    if args.shuffle:
+        seed = int(args.seed) if int(args.seed) != 0 else time.time_ns()
+        rng = random.Random(seed)
+        rng.shuffle(image_paths)
+        save_json(
+            output_dir / "random_order_manifest.json",
+            {
+                "seed": seed,
+                "total_images_before_limit": len(image_paths),
+                "images": [str(path) for path in image_paths],
+            },
+        )
+        print(f"Ordem aleatoria ativada | seed: {seed}", flush=True)
     if args.limit > 0:
         image_paths = image_paths[: args.limit]
 

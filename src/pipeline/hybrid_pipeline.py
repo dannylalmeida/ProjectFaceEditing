@@ -6,12 +6,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.blending.alpha_blend import blend_with_original
-from src.blending.color_match import preserve_original_texture_in_region
+from src.blending.color_match import preserve_original_texture_in_region, restore_local_detail_in_region
 from src.core.alignment import draw_landmarks_overlay
 from src.core.image_io import load_image, save_bgr_image, save_rgb_image
 from src.core.inverse_warp import inverse_warp_to_original
-from src.editors.local_geometry import resolve_nose_geometry_intent, shrink_masked_region_with_inpaint
-from src.editors.local_recolor import recolor_hair, recolor_iris
+from src.editors.local_geometry import (
+    apply_mouth_geometry_with_landmarks,
+    resolve_mouth_geometry_intent,
+    resolve_nose_geometry_intent,
+    shrink_masked_region_with_inpaint,
+)
+from src.editors.local_recolor import recolor_iris
 from src.editors.repaint_runner import run_repaint_or_inpainting
 from src.evaluation.debug_outputs import (
     build_difference_image,
@@ -24,7 +29,12 @@ from src.evaluation.debug_outputs import (
 from src.legacy import PROJECT_DIR, ensure_legacy_scripts_on_path
 from src.pipeline.attribute_router import route_attribute
 from src.segmentation.face_parsing import build_standard_masks, run_face_parsing
-from src.segmentation.facemesh_region import build_custom_nose_mask, draw_numbered_facemesh_overlay
+from src.segmentation.facemesh_region import (
+    build_custom_mouth_mask,
+    build_custom_nose_mask,
+    draw_numbered_facemesh_overlay,
+    get_mouth_anchor_points,
+)
 from src.segmentation.iris_mask import build_iris_mask
 from src.segmentation.mask_utils import create_edit_mask, extract_mask_outline_contours, get_edit_mask_defaults, refine_mask
 
@@ -65,6 +75,20 @@ DECREASE_TERMS = (
 
 
 _RUNTIME_CACHE: dict[str, object] = {}
+
+
+def _remove_small_mask_components(mask_uint8, cv2, np, min_area: int = 48):
+    if mask_uint8 is None or not np.any(mask_uint8):
+        return mask_uint8
+    hard = (mask_uint8 > 0).astype(np.uint8)
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(hard, 8)
+    if num_labels <= 2:
+        return mask_uint8
+    cleaned = np.zeros_like(mask_uint8)
+    for label in range(1, num_labels):
+        if int(stats[label, cv2.CC_STAT_AREA]) >= int(min_area):
+            cleaned[labels == label] = 255
+    return cleaned
 
 
 def _requests_decrease(description: str) -> bool:
@@ -249,12 +273,27 @@ def run_hybrid_pipeline(config: HybridPipelineConfig) -> dict[str, object]:
             styleclip_edit_bgr = aligned_original_bgr.copy()
 
         nose_keepout_mask = None
+        mouth_anchor_points = None
+        mouth_keepout_mask = None
         edit_region_mask_source = "face_parsing"
         if parsing_map is None:
             selected_mask = np.ones(aligned_original_bgr.shape[:2], dtype=np.uint8) * 255
             masks = {"selected_mask": selected_mask}
             labels = []
             edit_region_mask_source = "full_image_fallback"
+            if strategy.edit_region == "nose":
+                custom_nose_mask = build_custom_nose_mask(aligned_original_bgr, cv2, np)
+                if custom_nose_mask is not None:
+                    selected_mask = custom_nose_mask
+                    masks["nose_mask"] = custom_nose_mask
+                    edit_region_mask_source = "facemesh_nose"
+            elif strategy.edit_region == "mouth":
+                custom_mouth_mask = build_custom_mouth_mask(aligned_original_bgr, cv2, np)
+                mouth_anchor_points = get_mouth_anchor_points(aligned_original_bgr, cv2)
+                if custom_mouth_mask is not None:
+                    selected_mask = custom_mouth_mask
+                    masks["mouth_mask"] = custom_mouth_mask
+                    edit_region_mask_source = "facemesh_mouth"
         else:
             masks = build_standard_masks(parsing_map, cv2, np)
             selected_mask, labels = create_edit_mask(strategy.edit_region, parsing_map, cv2, np, dilation=0)
@@ -275,9 +314,31 @@ def run_hybrid_pipeline(config: HybridPipelineConfig) -> dict[str, object]:
                     selected_mask = custom_nose_mask
                     masks["nose_mask"] = custom_nose_mask
                     edit_region_mask_source = "facemesh_nose"
+            elif strategy.edit_region == "mouth":
+                custom_mouth_mask = build_custom_mouth_mask(aligned_original_bgr, cv2, np)
+                mouth_anchor_points = get_mouth_anchor_points(aligned_original_bgr, cv2)
+                if custom_mouth_mask is not None:
+                    mouth_support = cv2.max(masks["mouth_mask"], masks["teeth_mask"])
+                    mouth_support = cv2.dilate(
+                        mouth_support,
+                        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 11)),
+                        iterations=1,
+                    )
+                    selected_mask = cv2.bitwise_and(custom_mouth_mask, mouth_support)
+                    if not np.any(selected_mask):
+                        selected_mask = custom_mouth_mask
+                    masks["mouth_mask"] = custom_mouth_mask
+                    mouth_keepout_mask = cv2.dilate(
+                        masks["teeth_mask"],
+                        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 7)),
+                        iterations=1,
+                    )
+                    edit_region_mask_source = "facemesh_mouth"
             else:
                 masks["iris_mask"] = np.zeros_like(selected_mask)
                 nose_keepout_mask = None
+                mouth_anchor_points = None
+                mouth_keepout_mask = None
 
         defaults = get_edit_mask_defaults(strategy.edit_region)
         mask_dilation = config.mask_dilation if config.mask_dilation >= 0 else defaults["dilation"]
@@ -306,17 +367,6 @@ def run_hybrid_pipeline(config: HybridPipelineConfig) -> dict[str, object]:
                     blur=1,
                 )
                 direct_refinement = {"mode": "local_iris_recolor", "color": strategy.color}
-            elif strategy.edit_region == "hair" and strategy.color:
-                edited_source_bgr = recolor_hair(
-                    aligned_original_bgr,
-                    selected_mask,
-                    strategy.color,
-                    strength=config.local_strength,
-                    cv2=cv2,
-                    np=np,
-                    blur=max(5, mask_blur),
-                )
-                direct_refinement = {"mode": "local_hair_recolor", "color": strategy.color}
 
         geometry_mask = None
         nose_geometry_intent = resolve_nose_geometry_intent(description) if strategy.edit_region == "nose" else None
@@ -344,6 +394,34 @@ def run_hybrid_pipeline(config: HybridPipelineConfig) -> dict[str, object]:
                 "uses_inpaint_background": True,
                 "styleclip_source_discarded_for_geometry": bool(config.use_styleclip),
             }
+        mouth_geometry_intent = resolve_mouth_geometry_intent(description) if strategy.edit_region == "mouth" else None
+        if strategy.edit_region == "mouth" and mouth_geometry_intent is not None:
+            edited_source_bgr, geometry_mask = apply_mouth_geometry_with_landmarks(
+                aligned_original_bgr,
+                selected_mask_hard,
+                cv2,
+                np,
+                anchor_points=mouth_anchor_points,
+                scale_x=mouth_geometry_intent.scale_x,
+                scale_y=mouth_geometry_intent.scale_y,
+                smile_strength=mouth_geometry_intent.smile_strength,
+                feather=mouth_geometry_intent.feather,
+                inpaint_radius=3,
+                keepout_mask=mouth_keepout_mask,
+                corner_lift=mouth_geometry_intent.corner_lift,
+            )
+            direct_refinement = {
+                "mode": "direct_mouth_smooth_warp",
+                "scale_x": mouth_geometry_intent.scale_x,
+                "scale_y": mouth_geometry_intent.scale_y,
+                "smile_strength": mouth_geometry_intent.smile_strength,
+                "corner_lift": mouth_geometry_intent.corner_lift,
+                "intent": mouth_geometry_intent.reason,
+                "uses_inpaint_background": False,
+                "styleclip_source_discarded_for_geometry": bool(config.use_styleclip),
+            }
+            if mouth_keepout_mask is not None and np.any(mouth_keepout_mask):
+                direct_refinement["inner_mouth_keepout"] = True
 
         if geometry_mask is not None:
             final_mask_aligned = geometry_mask
@@ -357,6 +435,24 @@ def run_hybrid_pipeline(config: HybridPipelineConfig) -> dict[str, object]:
                 cv2=cv2,
                 np=np,
             )
+        mouth_keepout_hard = None
+        mouth_geometry_active = strategy.edit_region == "mouth" and mouth_geometry_intent is not None
+        mouth_corner_geometry_active = bool(
+            mouth_geometry_active and getattr(mouth_geometry_intent, "corner_lift", 0.0) > 0.0
+        )
+        if strategy.edit_region == "mouth" and mouth_keepout_mask is not None and np.any(mouth_keepout_mask):
+            if mouth_corner_geometry_active:
+                direct_refinement["inner_mouth_guarded_in_corner_warp"] = True
+            else:
+                mouth_keepout_hard = (mouth_keepout_mask > 0).astype(np.uint8) * 255
+                edited_source_bgr[mouth_keepout_hard > 0] = aligned_original_bgr[mouth_keepout_hard > 0]
+                if mouth_geometry_active:
+                    direct_refinement["inner_mouth_restored_inside_final_mask"] = True
+                else:
+                    final_mask_aligned = cv2.bitwise_and(final_mask_aligned, cv2.bitwise_not(mouth_keepout_hard))
+                    direct_refinement["inner_mouth_removed_from_final_mask"] = True
+        if strategy.edit_region == "mouth" and mouth_geometry_intent is not None:
+            final_mask_aligned = _remove_small_mask_components(final_mask_aligned, cv2, np, min_area=24)
         if strategy.edit_region == "nose" and geometry_mask is None:
             edited_source_bgr = preserve_original_texture_in_region(
                 edited_source_bgr,
@@ -365,27 +461,47 @@ def run_hybrid_pipeline(config: HybridPipelineConfig) -> dict[str, object]:
                 cv2,
                 np,
             )
-        final_blended_aligned_bgr = blend_with_original(aligned_original_bgr, edited_source_bgr, final_mask_aligned, np)
+        if strategy.edit_region == "mouth" and mouth_geometry_intent is not None:
+            # apply_mouth_geometry_with_landmarks already composites warp with original
+            # via the feathered change_mask. blend_with_original would create a second
+            # blend pass, weakening edge transitions non-uniformly and producing seam artifacts.
+            final_blended_aligned_bgr = edited_source_bgr
+            direct_refinement["aligned_blend_skipped"] = "geometry_already_composited"
+        else:
+            final_blended_aligned_bgr = blend_with_original(aligned_original_bgr, edited_source_bgr, final_mask_aligned, np)
+        if mouth_keepout_hard is not None:
+            final_blended_aligned_bgr[mouth_keepout_hard > 0] = aligned_original_bgr[mouth_keepout_hard > 0]
+        effective_use_repaint = bool(strategy.use_repaint)
+        if strategy.edit_region == "mouth" and mouth_geometry_intent is not None:
+            effective_use_repaint = False
+            if strategy.use_repaint:
+                direct_refinement["repaint_skipped_for_landmark_geometry"] = True
         final_repainted_aligned_bgr, repaint_edge_mask, repaint_info = run_repaint_or_inpainting(
             final_blended_aligned_bgr,
             final_mask_aligned,
             cv2,
             np,
-            steps=config.repaint_steps if strategy.use_repaint else 0,
-            strength=config.repaint_strength if strategy.use_repaint else 0.0,
+            steps=config.repaint_steps if effective_use_repaint else 0,
+            strength=config.repaint_strength if effective_use_repaint else 0.0,
             backend=config.repaint_backend,
             work_dir=output_dir,
             project_dir=PROJECT_DIR,
             conda_env="styleclip",
             device="auto",
         )
-        final_aligned_for_warp = final_repainted_aligned_bgr if strategy.use_repaint else final_blended_aligned_bgr
+        final_aligned_for_warp = final_repainted_aligned_bgr if effective_use_repaint else final_blended_aligned_bgr
+        if mouth_keepout_hard is not None:
+            final_aligned_for_warp[mouth_keepout_hard > 0] = aligned_original_bgr[mouth_keepout_hard > 0]
         final_mask_for_warp = final_mask_aligned
-        if strategy.use_repaint and np.any(repaint_edge_mask):
+        if effective_use_repaint and np.any(repaint_edge_mask):
             final_mask_for_warp = cv2.max(final_mask_aligned, repaint_edge_mask)
         aligned_touched = cv2.absdiff(aligned_original_bgr, final_aligned_for_warp)
         aligned_touched_mask = (aligned_touched.max(axis=2) > 0).astype(np.uint8) * 255
         final_mask_for_warp = cv2.max(final_mask_for_warp, aligned_touched_mask)
+        if mouth_keepout_hard is not None and not mouth_geometry_active:
+            final_mask_for_warp = cv2.bitwise_and(final_mask_for_warp, cv2.bitwise_not(mouth_keepout_hard))
+        if strategy.edit_region == "mouth" and mouth_geometry_intent is not None:
+            final_mask_for_warp = _remove_small_mask_components(final_mask_for_warp, cv2, np, min_area=24)
         editable_region_outline_aligned = extract_mask_outline_contours(final_mask_for_warp, cv2, np)
 
         final_on_original_bgr, full_mask_on_original = inverse_warp_to_original(
@@ -397,6 +513,7 @@ def run_hybrid_pipeline(config: HybridPipelineConfig) -> dict[str, object]:
             cv2,
             np,
         )
+        # Sharpening a geometry-warp result creates ringing at the edit boundary Ã¢â‚¬â€ skipped for mouth.
         editable_region_outline_full = extract_mask_outline_contours(full_mask_on_original, cv2, np)
 
         landmarks_overlay_bgr = draw_landmarks_overlay(original_bgr, primary_face.get("landmarks", {}), cv2)
@@ -450,7 +567,7 @@ def run_hybrid_pipeline(config: HybridPipelineConfig) -> dict[str, object]:
         "target_regions": strategy.target_regions,
         "local_recolor_used": strategy.use_local_recolor,
         "styleclip_used": config.use_styleclip,
-        "repaint_used": strategy.use_repaint,
+        "repaint_used": effective_use_repaint,
     }
 
     if config.debug:
@@ -469,7 +586,7 @@ def run_hybrid_pipeline(config: HybridPipelineConfig) -> dict[str, object]:
             )
         )
         paths["repaint_input"] = str(save_bgr_image(output_dir / "repaint_input.png", final_blended_aligned_bgr, cv2))
-        paths["repaint_mask"] = str(save_rgb_image(output_dir / "repaint_mask.png", repaint_edge_mask if strategy.use_repaint else final_mask_for_warp))
+        paths["repaint_mask"] = str(save_rgb_image(output_dir / "repaint_mask.png", repaint_edge_mask if effective_use_repaint else final_mask_for_warp))
         paths["repaint_output"] = str(save_bgr_image(output_dir / "repaint_output.png", final_aligned_for_warp, cv2))
 
     crop_metadata_path = output_dir / "primary_face.json"
@@ -490,7 +607,8 @@ def run_hybrid_pipeline(config: HybridPipelineConfig) -> dict[str, object]:
         "use_face_parsing": config.use_face_parsing,
         "use_local_recolor": strategy.use_local_recolor,
         "use_styleclip": config.use_styleclip,
-        "use_repaint": strategy.use_repaint,
+        "use_repaint_requested": strategy.use_repaint,
+        "use_repaint": effective_use_repaint,
         "mask_dilation": mask_dilation,
         "mask_erosion": config.mask_erosion,
         "mask_blur": mask_blur,

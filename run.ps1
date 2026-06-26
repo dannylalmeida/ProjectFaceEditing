@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Alias("Acao", "Modo")]
     [ValidateSet("landmarks", "pontos", "reconstrucao", "reconstruir", "retinaface", "e4e", "psp", "styleclip", "editar", "edit", "styleclip_sweep", "ajuda")]
     [string]$Comando = "landmarks",
@@ -53,7 +53,7 @@
     [ValidateSet("auto", "true", "false", "1", "0", "yes", "no", "sim", "nao", "nÃ£o", "on", "off")]
     [string]$UseRePaint = "auto",
 
-    [ValidateSet("auto", "hair", "cabelo", "mouth", "boca", "smile", "sorriso", "lips", "lip", "labios", "labio", "face", "pele", "skin", "age", "idade", "older", "younger", "beard", "barba", "mustache", "bigode", "goatee", "cavanhaque", "lower_face", "eyes", "eye", "iris", "irises", "olhos", "olho", "glasses", "oculos", "eyebrows", "eyebrow", "sobrancelhas", "sobrancelha", "nose", "nariz", "ears", "ear", "orelhas", "orelha", "neck", "pescoco")]
+    [ValidateSet("auto", "mouth", "boca", "smile", "sorriso", "lips", "lip", "labios", "labio", "face", "pele", "skin", "age", "idade", "older", "younger", "eyes", "eye", "iris", "irises", "olhos", "olho", "glasses", "oculos", "eyebrows", "eyebrow", "sobrancelhas", "sobrancelha", "nose", "nariz", "ears", "ear", "orelhas", "orelha", "neck", "pescoco")]
     [string]$EditRegion = "auto",
 
     [int]$MaskDilation = -1,
@@ -102,8 +102,8 @@ function Show-ProjectHelp {
     Write-Host "Foco atual: landmarks numerados antes de qualquer edicao."
     Write-Host ""
     Write-Host "Uso simples:"
-    Write-Host "  .\run.cmd `"blonde hair`""
-    Write-Host "  .\run.cmd -Descricao `"cabelo loiro`""
+    Write-Host "  .\run.cmd `"big lips`""
+    Write-Host "  .\run.cmd -Descricao `"blue eyes`""
     Write-Host ""
     Write-Host "Uso rapido:"
     Write-Host "  .\run.cmd"
@@ -115,9 +115,9 @@ function Show-ProjectHelp {
     Write-Host "  .\run.cmd -Comando retinaface"
     Write-Host ""
     Write-Host "Edicao explicita:"
-    Write-Host "  .\run.cmd -Comando styleclip -SourceDescricao `"a person with dark hair`" -TargetDescricao `"a person with blonde hair`""
-    Write-Host "  .\run.cmd -Comando edit -Descricao `"blue eyes`" -EditRegion iris -UseLocalRecolor true -UseStyleCLIP false -Debug true"
-    Write-Host "  .\run.cmd -Comando edit -TargetDescricao `"a smiling person`" -EditRegion mouth -UseStyleCLIP true -Debug true"
+    Write-Host "  .\run.cmd -Comando edit -Descricao `"big lips`" -EditRegion boca -AuditDebug true"
+    Write-Host "  .\run.cmd -Comando edit -Descricao `"blue eyes`" -EditRegion iris -UseLocalRecolor true -UseStyleCLIP false -AuditDebug true"
+    Write-Host "  .\run.cmd -Comando edit -Descricao `"sorriso`" -EditRegion mouth -UseStyleCLIP false -AuditDebug true"
     Write-Host ""
     Write-Host "Defaults:"
     Write-Host "  comando sem prompt: landmarks"
@@ -180,6 +180,16 @@ function Convert-RunNormalizedBool {
     return Convert-RunBool -Value $Value -Default $Default
 }
 
+function Normalize-RunText {
+    param([string]$Value)
+
+    if ($null -eq $Value) {
+        return ""
+    }
+    $decomposed = $Value.ToString().Normalize([System.Text.NormalizationForm]::FormD)
+    return ([regex]::Replace($decomposed, "\p{Mn}", "")).ToLowerInvariant().Replace("-", " ")
+}
+
 function Test-RunLocalRecolorCandidate {
     param(
         [string]$Description,
@@ -188,20 +198,14 @@ function Test-RunLocalRecolorCandidate {
 
     $rawDescription = if ($null -ne $Description) { $Description } else { "" }
     $rawRegion = if ($null -ne $EditRegion) { $EditRegion } else { "auto" }
-    $text = (" " + $rawDescription + " ").ToLowerInvariant()
-    $region = ($rawRegion.ToString()).ToLowerInvariant()
+    $text = " " + (Normalize-RunText -Value $rawDescription) + " "
+    $region = Normalize-RunText -Value $rawRegion
     $colorPattern = "\b(blue|green|brown|hazel|gray|grey|black|white|blond|blonde|gold|azul|azuis|verde|verdes|castanho|castanha|castanhos|castanhas|cinza|cinzento|cinzenta|preto|preta|loiro|loira|dourado|dourada)\b"
 
     if ($region -in @("iris", "irises", "eyes", "eye", "olhos", "olho") -and $text -match $colorPattern) {
         return $true
     }
-    if ($region -in @("hair", "cabelo") -and $text -match $colorPattern) {
-        return $true
-    }
     if ($text -match "$colorPattern\s+(eye|eyes|olho|olhos)\b") {
-        return $true
-    }
-    if ($text -match "$colorPattern\s+(hair|cabelo|cabelos)\b") {
         return $true
     }
     return $false
@@ -215,12 +219,16 @@ function Test-RunLocalGeometryCandidate {
 
     $rawDescription = if ($null -ne $Description) { $Description } else { "" }
     $rawRegion = if ($null -ne $EditRegion) { $EditRegion } else { "auto" }
-    $text = (" " + $rawDescription + " ").ToLowerInvariant()
-    $region = ($rawRegion.ToString()).ToLowerInvariant()
+    $text = " " + (Normalize-RunText -Value $rawDescription) + " "
+    $region = Normalize-RunText -Value $rawRegion
     $isNose = $region -in @("nose", "nariz") -or $text -match "\b(nose|nariz)\b"
-    $isDecrease = $text -match "\b(smaller|small|thin|thinner|narrower|less|shorter|decrease|reduce|reduced|shrink|menor|menores|pequeno|pequena|fino|fina|afinar|diminuir|diminuido|diminuida|reduzir|reduzido|reduzida|encolher|encolhido|encolhida)\b"
+    $isDecrease = $text -match "\b(smaller|small|thin|thinner|narrow|narrower|less|shorter|decrease|reduce|reduced|shrink|menor|menores|pequeno|pequena|fino|fina|afinar|diminuir|diminuido|diminuida|reduzir|reduzido|reduzida|encolher|encolhido|encolhida)\b"
+    $isIncrease = $text -match "\b(big|large|larger|bigger|wide|wider|widder|broad|broader|full|fuller|thick|thicker|plump|plumper|pouty|maior|maiores|grande|grandes|largo|larga|largos|largas|cheio|cheia|cheios|cheias|grosso|grossa|grossos|grossas|carnudo|carnuda|carnudos|carnudas)\b"
     $isLengthEdit = $text -match "\b(long|longer|short|shorter|comprido|comprida|compridos|compridas|longo|longa|longos|longas|curto|curta|curtos|curtas)\b"
-    return ($isNose -and ($isDecrease -or $isLengthEdit))
+    $isMouth = $region -in @("mouth", "boca", "smile", "sorriso", "lips", "lip", "labios", "labio") -or $text -match "\b(mouth|boca|smile|smiling|sorriso|sorridente|lips|lip|labios|labio)\b"
+    $isSmileEdit = $text -match "\b(smile|smiling|sorriso|sorridente|sorrir)\b"
+    $isMouthShapeEdit = $isMouth -and ($isSmileEdit -or $isDecrease -or $isIncrease -or $text -match "\b(open|opened|closed|close|aberta|aberto|fechada|fechado|abrir|fechar)\b")
+    return (($isNose -and ($isDecrease -or $isLengthEdit)) -or $isMouthShapeEdit)
 }
 
 function Resolve-RunHybridRePaint {
@@ -239,15 +247,15 @@ function Resolve-RunHybridRePaint {
 
     $rawDescription = if ($null -ne $Description) { $Description } else { "" }
     $rawRegion = if ($null -ne $EditRegion) { $EditRegion } else { "auto" }
-    $text = (" " + $rawDescription + " ").ToLowerInvariant()
-    $region = ($rawRegion.ToString()).ToLowerInvariant()
+    $text = " " + (Normalize-RunText -Value $rawDescription) + " "
+    $region = Normalize-RunText -Value $rawRegion
     if ($region -in @("iris", "irises", "eyes", "eye", "olhos", "olho")) {
         return $false
     }
-    if ($region -in @("hair", "cabelo", "beard", "barba", "mouth", "boca", "smile", "sorriso")) {
+    if ($region -in @("mouth", "boca", "smile", "sorriso")) {
         return $true
     }
-    if ($text -match "\b(hair|cabelo|beard|barba|mouth|boca|smile|sorriso)\b") {
+    if ($text -match "\b(mouth|boca|smile|sorriso)\b") {
         return $true
     }
     return $false
@@ -262,6 +270,22 @@ $runReconstruction = Join-Path $scriptsDir "run_reconstruction_check.ps1"
 $runStyleclip = Join-Path $scriptsDir "run_styleclip_from_latent.ps1"
 $runHybridEdit = Join-Path $scriptsDir "run_hybrid_edit.py"
 $sweepComparisonScript = Join-Path $scriptsDir "create_sweep_comparison.py"
+
+# Quando $Imagem é uma directoria, selecciona uma imagem PNG aleatória dentro dela.
+$resolvedImagem = $Imagem
+if (Test-Path $resolvedImagem -PathType Container) {
+    $candidates = Get-ChildItem $resolvedImagem -Filter "*.png" -File
+    if ($candidates.Count -eq 0) {
+        $candidates = Get-ChildItem $resolvedImagem -Filter "*.jpg" -File
+    }
+    if ($candidates.Count -eq 0) {
+        Write-Error "Nenhuma imagem encontrada em '$resolvedImagem'."
+        exit 1
+    }
+    $resolvedImagem = ($candidates | Get-Random).FullName
+    Write-Host "Imagem aleatoria: $(Split-Path $resolvedImagem -Leaf)" -ForegroundColor Cyan
+}
+$Imagem = $resolvedImagem
 
 if ($Prompt -and $Prompt.Count -gt 0) {
     $promptText = ($Prompt -join " ").Trim()
@@ -350,7 +374,7 @@ switch ($Comando) {
             $TargetDescricao = $Descricao
         }
         if (-not $TargetDescricao) {
-            Write-Error "Falta a descricao da edicao. Usa, por exemplo: .\run.cmd `"blonde hair`""
+            Write-Error "Falta a descricao da edicao. Usa, por exemplo: .\run.cmd `"big lips`""
             exit 1
         }
         $resolvedUseFaceParsing = Convert-RunBool -Value $UseFaceParsing -Default $true
@@ -367,7 +391,12 @@ switch ($Comando) {
             $resolvedUseStyleCLIP = Convert-RunNormalizedBool -Value $resolvedUseStyleCLIPSetting -Default $true
         }
         if ($localGeometryCandidate -and $resolvedUseStyleCLIP) {
-            Write-Host "Nota: edicao geometrica do nariz detectada; a usar geometria local em vez de StyleCLIP para preservar qualidade."
+            if ($resolvedUseStyleCLIPSetting -eq "auto") {
+                Write-Host "Nota: edicao geometrica local detectada; a usar geometria local em vez de StyleCLIP para preservar qualidade."
+            }
+            else {
+                Write-Host "Nota: UseStyleCLIP=true foi pedido, mas esta edicao de forma usa landmarks locais para preservar qualidade."
+            }
             $resolvedUseStyleCLIP = $false
         }
         if ($resolvedUseStyleCLIP -and $resolvedUseLocalRecolorSetting -eq "auto") {
@@ -386,7 +415,7 @@ switch ($Comando) {
         Write-Host "A composicao final usa a imagem original/crop como base."
 
         if (-not $resolvedUseStyleCLIP) {
-            $resolvedHybridUseRePaint = Resolve-RunHybridRePaint -Requested $resolvedUseRePaint -Description $TargetDescricao -EditRegion $EditRegion
+            $resolvedHybridUseRePaint = if ($localGeometryCandidate) { $false } else { Resolve-RunHybridRePaint -Requested $resolvedUseRePaint -Description $TargetDescricao -EditRegion $EditRegion }
             $hybridArgs = @(
                 $runHybridEdit,
                 "--input", $Imagem,
@@ -436,10 +465,28 @@ switch ($Comando) {
         $inversionRoot = if ($selectedInversor -eq "psp") { Join-Path $projectRoot "outputs\retinaface_psp" } else { Join-Path $projectRoot "outputs\retinaface_e4e" }
         $inversionDirName = if ($selectedInversor -eq "psp") { "02_psp_inversion" } else { "02_e4e_inversion" }
         $latentPath = Join-Path $inversionRoot "$inversionDirName\inversion_latent.pt"
+        $latentSourceFile = Join-Path $inversionRoot "$inversionDirName\inversion_source.txt"
         $cropMetadata = Join-Path $inversionRoot "01_retinaface_crop\primary_face.json"
 
-        if (-not (Test-Path -LiteralPath $latentPath)) {
-            Write-Host "Latent $selectedInversor ainda nao existe. A gerar reconstrucao primeiro..."
+        $needsInversion = -not (Test-Path -LiteralPath $latentPath)
+        if (-not $needsInversion) {
+            if (Test-Path -LiteralPath $latentSourceFile) {
+                $storedSource = (Get-Content -LiteralPath $latentSourceFile -Raw).Trim()
+                if ($storedSource -ne $Imagem) {
+                    $needsInversion = $true
+                    Write-Host "Imagem alterada ($(Split-Path $storedSource -Leaf) → $(Split-Path $Imagem -Leaf)). A regenerar latent..." -ForegroundColor Yellow
+                }
+            } else {
+                # Latent existe mas sem registo de origem — proveniência desconhecida, re-inverter.
+                $needsInversion = $true
+                Write-Host "Fonte do latent desconhecida. A regenerar para $(Split-Path $Imagem -Leaf)..." -ForegroundColor Yellow
+            }
+        }
+
+        if ($needsInversion) {
+            if (-not (Test-Path -LiteralPath $latentPath)) {
+                Write-Host "Latent $selectedInversor ainda nao existe. A gerar reconstrucao primeiro..."
+            }
             & $runInversion `
                 -InputImage $Imagem `
                 -Device $Dispositivo `
@@ -451,6 +498,7 @@ switch ($Comando) {
             if ($LASTEXITCODE -ne 0) {
                 exit $LASTEXITCODE
             }
+            $Imagem | Set-Content -LiteralPath $latentSourceFile -Encoding utf8 -NoNewline
         }
 
         $disableDirectRefinements = -not $resolvedUseLocalRecolor

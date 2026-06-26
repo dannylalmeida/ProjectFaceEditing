@@ -23,6 +23,7 @@ from face_pipeline_utils import (
 )
 from src.segmentation.facemesh_region import (
     build_custom_nose_mask,
+    build_custom_mouth_mask,
     detect_facemesh_landmarks,
     draw_numbered_facemesh_overlay,
 )
@@ -59,10 +60,15 @@ def build_editable_region_outputs(image_bgr, edit_region: str, cv2, np, landmark
     region = normalize_edit_region(edit_region)
     if region == "auto":
         region = "nose"
-    if region not in {"nose"}:
+    if region not in {"nose", "mouth"}:
         return None
 
-    mask = build_custom_nose_mask(image_bgr, cv2, np, landmarks=landmarks, mp=mp)
+    if region == "nose":
+        mask = build_custom_nose_mask(image_bgr, cv2, np, landmarks=landmarks, mp=mp)
+        source = "facemesh_nose"
+    else:
+        mask = build_custom_mouth_mask(image_bgr, cv2, np, landmarks=landmarks, mp=mp)
+        source = "facemesh_mouth"
     if mask is None:
         return None
 
@@ -70,7 +76,7 @@ def build_editable_region_outputs(image_bgr, edit_region: str, cv2, np, landmark
     contours = extract_mask_outline_contours(mask, cv2, np)
     return {
         "region": region,
-        "source": "facemesh_nose",
+        "source": source,
         "mask": mask,
         "overlay": outline_overlay,
         "contours": contours,

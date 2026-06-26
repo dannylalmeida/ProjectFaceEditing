@@ -3,10 +3,6 @@ function Get-StyleClipPromptPresetMap {
         sorriso         = @{ Type = "quality"; Value = "smiling"; Note = "Adiciona um sorriso" }
         jovem           = @{ Type = "quality"; Value = "younger"; Note = "Rejuvenesce a face" }
         velho           = @{ Type = "quality"; Value = "older"; Note = "Envelhece a face" }
-        cabelo_loiro    = @{ Type = "feature"; Value = "blond hair"; Note = "Tenta deixar o cabelo loiro" }
-        cabelo_preto    = @{ Type = "feature"; Value = "black hair"; Note = "Tenta deixar o cabelo preto" }
-        cabelo_grisalho = @{ Type = "feature"; Value = "gray hair"; Note = "Tenta deixar o cabelo grisalho" }
-        barba           = @{ Type = "feature"; Value = "a beard"; Note = "Adiciona barba" }
         oculos          = @{ Type = "feature"; Value = "glasses"; Note = "Adiciona oculos" }
         batom_vermelho  = @{ Type = "feature"; Value = "red lipstick"; Note = "Realca batom vermelho" }
         maquilhagem     = @{ Type = "feature"; Value = "makeup"; Note = "Realca maquilhagem" }
@@ -55,12 +51,6 @@ function Get-StyleClipPtToEnPhraseMap {
         @{ Pattern = "\buma rapariga com\b"; Replacement = "a woman with" }
         @{ Pattern = "\buma rapariga\b"; Replacement = "a woman" }
         @{ Pattern = "\bque tem\b"; Replacement = "with" }
-        @{ Pattern = "\bcom barba\b"; Replacement = "with a beard" }
-        @{ Pattern = "\bsem barba\b"; Replacement = "without a beard" }
-        @{ Pattern = "\bcom bigode\b"; Replacement = "with a mustache" }
-        @{ Pattern = "\bsem bigode\b"; Replacement = "without a mustache" }
-        @{ Pattern = "\bcom cavanhaque\b"; Replacement = "with a goatee" }
-        @{ Pattern = "\bsem cavanhaque\b"; Replacement = "without a goatee" }
         @{ Pattern = "\bcom oculos\b"; Replacement = "with glasses" }
         @{ Pattern = "\bsem oculos\b"; Replacement = "without glasses" }
         @{ Pattern = "\bcom maquilhagem\b"; Replacement = "with makeup" }
@@ -147,7 +137,6 @@ function Get-StyleClipPtToEnPhraseMap {
         @{ Pattern = "\bligeiramente menos\b"; Replacement = "slightly less" }
         @{ Pattern = "\bmacas do rosto\b"; Replacement = "cheekbones" }
         @{ Pattern = "\blinha mandibular\b"; Replacement = "jawline" }
-        @{ Pattern = "\bpelo facial\b"; Replacement = "facial hair" }
     )
 }
 
@@ -169,9 +158,6 @@ function Get-StyleClipPtTokenMap {
         "rapariga" = "woman"
         "rosto" = "face"
         "face" = "face"
-        "cabelo" = "hair"
-        "franja" = "bangs"
-        "franjas" = "bangs"
         "pestana" = "eyelashes"
         "pestanas" = "eyelashes"
         "cilio" = "eyelashes"
@@ -185,10 +171,6 @@ function Get-StyleClipPtTokenMap {
         "labio" = "lips"
         "labios" = "lips"
         "pele" = "skin"
-        "barba" = "beard"
-        "bigode" = "mustache"
-        "cavanhaque" = "goatee"
-        "costeletas" = "sideburns"
         "oculos" = "glasses"
         "maquilhagem" = "makeup"
         "maquiagem" = "makeup"
@@ -413,10 +395,10 @@ function Test-LikelyPortuguesePrompt {
 
     $lower = (Convert-StyleClipToAscii $Description).ToLowerInvariant()
     $markers = @(
-        " cabelo ", " olhos ", " sobrancelhas ", " barba ", " oculos ", " pele ",
+        " olhos ", " sobrancelhas ", " oculos ", " pele ",
         " nariz ", " boca ", " labios ", " maquilhagem ", " pessoa ", " homem ", " mulher ",
         " com ", " sem ", " mais ", " muito ", " jovem ", " velho ", " velha ",
-        " franja ", " pestanas ", " bochechas ", " queixo ", " ruivo ", " loiro ", " castanho "
+        " pestanas ", " bochechas ", " queixo ", " castanho "
     )
 
     foreach ($marker in $markers) {
@@ -433,9 +415,9 @@ function Get-StyleClipAllowedEnglishTokens {
         "a", "an", "person", "man", "woman", "with", "without", "and", "or",
         "very", "more", "less", "slightly", "subtle", "intense", "dramatic",
         "young", "younger", "old", "older", "smiling", "smile",
-        "face", "hair", "bangs", "eyelashes", "eyebrows", "eyes", "nose", "mouth", "lips", "skin",
-        "beard", "mustache", "goatee", "sideburns", "glasses", "makeup", "lipstick", "eyeliner", "mascara", "blush",
-        "wrinkles", "freckles", "acne", "forehead", "cheeks", "cheekbones", "chin", "jawline", "facial",
+        "face", "eyelashes", "eyebrows", "eyes", "nose", "mouth", "lips", "skin",
+        "glasses", "makeup", "lipstick", "eyeliner", "mascara", "blush",
+        "wrinkles", "freckles", "acne", "forehead", "cheeks", "cheekbones", "chin", "jawline",
         "long", "longer", "short", "shorter", "straight", "wavy", "curly", "voluminous", "full", "fuller",
         "thin", "thinner", "thick", "thicker", "light", "lighter", "dark", "darker", "bright", "natural",
         "large", "larger", "small", "smaller", "defined", "sharp", "soft", "softer", "arched", "round", "rounder",
@@ -453,8 +435,8 @@ function Format-StyleClipEnglishPrompt {
     }
 
     $regionTerms = @(
-        "hair", "bangs", "eyelashes", "eyebrows", "eyes", "nose", "mouth", "lips", "skin", "beard",
-        "mustache", "goatee", "sideburns", "glasses", "makeup", "lipstick", "eyeliner", "mascara",
+        "eyelashes", "eyebrows", "eyes", "nose", "mouth", "lips", "skin",
+        "glasses", "makeup", "lipstick", "eyeliner", "mascara",
         "blush", "wrinkles", "freckles", "acne", "forehead", "cheeks", "cheekbones", "chin", "jawline", "face"
     )
     $subjectTerms = @("person", "man", "woman")
@@ -587,14 +569,6 @@ function Convert-StyleClipDescriptionToEnglish {
     $normalized = $normalized -replace "\bwithout without\b", "without"
     $normalized = $normalized -replace "\band and\b", "and"
     $normalized = $normalized -replace "\bor or\b", "or"
-    $normalized = $normalized -replace "\bwith beard\b", "with a beard"
-    $normalized = $normalized -replace "\bwithout beard\b", "without a beard"
-    $normalized = $normalized -replace "\bwith mustache\b", "with a mustache"
-    $normalized = $normalized -replace "\bwithout mustache\b", "without a mustache"
-    $normalized = $normalized -replace "\bwith goatee\b", "with a goatee"
-    $normalized = $normalized -replace "\bwithout goatee\b", "without a goatee"
-    $normalized = $normalized -replace "\bwithout a beard with a mustache\b", "without a beard and with a mustache"
-    $normalized = $normalized -replace "\bwithout a beard with a goatee\b", "without a beard and with a goatee"
     $normalized = $normalized -replace "\bwith a glasses\b", "with glasses"
     $normalized = $normalized -replace "\bwithout a glasses\b", "without glasses"
     $normalized = $normalized -replace "\ba person with young\b", "a young person with"
@@ -649,14 +623,13 @@ function Show-StyleClipPromptPresets {
 
 function Get-StyleClipRegionKeywordMap {
     return [ordered]@{
-        cabelo = @("cabelo", "cabelos", "hair", "bangs", "franja", "franjas")
         sobrancelhas = @("sobrancelha", "sobrancelhas", "eyebrow", "eyebrows")
         olhos = @("olho", "olhos", "eyes", "eye", "eyelash", "eyelashes", "pestana", "pestanas", "cilio", "cilios", "glasses", "oculos", "eyeliner", "delineador", "mascara", "rimel")
         orelhas = @("orelha", "orelhas", "ear", "ears")
         nariz = @("nariz", "nose")
         boca = @("boca", "labio", "labios", "lips", "lip", "mouth", "lipstick", "batom", "smile", "smiling", "sorriso", "sorridente")
         pescoco = @("pescoco", "pescoço", "neck")
-        pele = @("pele", "skin", "freckles", "sardas", "wrinkles", "rugas", "acne", "espinhas", "face", "rosto", "cheeks", "bochechas", "cheekbones", "queixo", "chin", "jawline", "mandibula", "maxilar", "older", "younger", "old", "young", "age", "idade", "beard", "barba", "mustache", "bigode", "goatee", "cavanhaque", "facial hair")
+        pele = @("pele", "skin", "freckles", "sardas", "wrinkles", "rugas", "acne", "espinhas", "face", "rosto", "cheeks", "bochechas", "cheekbones", "queixo", "chin", "jawline", "mandibula", "maxilar", "older", "younger", "old", "young", "age", "idade")
     }
 }
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import unicodedata
+
 from src.legacy import ensure_legacy_scripts_on_path
 
 
@@ -12,8 +14,6 @@ def get_region_labels() -> dict[str, list[int]]:
 
 EDIT_REGION_ALIASES = {
     "auto": "auto",
-    "hair": "hair",
-    "cabelo": "hair",
     "mouth": "mouth",
     "boca": "mouth",
     "smile": "mouth",
@@ -29,13 +29,6 @@ EDIT_REGION_ALIASES = {
     "idade": "face",
     "older": "face",
     "younger": "face",
-    "beard": "beard",
-    "barba": "beard",
-    "mustache": "beard",
-    "bigode": "beard",
-    "goatee": "beard",
-    "cavanhaque": "beard",
-    "lower_face": "beard",
     "eyes": "eyes",
     "eye": "eyes",
     "olhos": "eyes",
@@ -59,10 +52,8 @@ EDIT_REGION_ALIASES = {
 
 
 EDIT_REGION_MASK_DEFAULTS = {
-    "hair": {"dilation": 8, "blur": 15},
     "mouth": {"dilation": 1, "blur": 4},
     "face": {"dilation": 4, "blur": 9},
-    "beard": {"dilation": 3, "blur": 7},
     "eyes": {"dilation": 0, "blur": 2},
     "iris": {"dilation": 0, "blur": 1},
     "eyebrows": {"dilation": 1, "blur": 3},
@@ -73,7 +64,10 @@ EDIT_REGION_MASK_DEFAULTS = {
 
 
 def normalize_edit_region(edit_region: str | None) -> str:
-    return EDIT_REGION_ALIASES.get((edit_region or "auto").strip().lower(), (edit_region or "auto").strip().lower())
+    raw = (edit_region or "auto").strip().lower()
+    decomposed = unicodedata.normalize("NFKD", raw)
+    normalized = "".join(char for char in decomposed if not unicodedata.combining(char))
+    return EDIT_REGION_ALIASES.get(normalized, normalized)
 
 
 def build_region_mask(parsing_map, labels: list[int], dilation: int, cv2, np):
@@ -89,10 +83,6 @@ def create_edit_mask(attribute: str, parsing_map, cv2, np, dilation: int = 0):
     labels_by_region = get_region_labels()
     attribute = normalize_edit_region(attribute)
 
-    if attribute == "hair":
-        labels = labels_by_region["cabelo"]
-        return build_region_mask(parsing_map, labels, dilation, cv2, np), labels
-
     if attribute == "mouth":
         labels = labels_by_region["boca"]
         return build_region_mask(parsing_map, labels, dilation, cv2, np), labels
@@ -100,17 +90,6 @@ def create_edit_mask(attribute: str, parsing_map, cv2, np, dilation: int = 0):
     if attribute == "face":
         labels = labels_by_region["pele"] + labels_by_region["nariz"]
         return build_region_mask(parsing_map, labels, dilation, cv2, np), labels
-
-    if attribute == "beard":
-        labels = labels_by_region["pele"]
-        skin_mask = build_region_mask(parsing_map, labels, dilation, cv2, np)
-        height, width = skin_mask.shape[:2]
-        lower_face_mask = np.zeros((height, width), dtype=np.uint8)
-        lower_face_mask[int(height * 0.52):height, :] = 255
-        mouth_keepout = build_region_mask(parsing_map, labels_by_region["boca"], max(0, dilation // 2), cv2, np)
-        beard_mask = cv2.bitwise_and(skin_mask, lower_face_mask)
-        beard_mask = cv2.bitwise_and(beard_mask, cv2.bitwise_not(mouth_keepout))
-        return beard_mask, labels
 
     if attribute in {"eyes", "iris"}:
         labels = labels_by_region["olhos"]

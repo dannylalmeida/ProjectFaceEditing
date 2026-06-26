@@ -25,7 +25,7 @@ param(
     [bool]$UseFaceParsing = $true,
     [ValidateSet("auto", "true", "false", "1", "0", "yes", "no", "sim", "nao", "não", "on", "off")]
     [string]$UseRePaint = "auto",
-    [ValidateSet("auto", "hair", "cabelo", "mouth", "boca", "smile", "sorriso", "lips", "lip", "labios", "labio", "face", "pele", "skin", "age", "idade", "older", "younger", "beard", "barba", "mustache", "bigode", "goatee", "cavanhaque", "lower_face", "eyes", "eye", "iris", "irises", "olhos", "olho", "glasses", "oculos", "eyebrows", "eyebrow", "sobrancelhas", "sobrancelha", "nose", "nariz", "ears", "ear", "orelhas", "orelha", "neck", "pescoco")]
+    [ValidateSet("auto", "mouth", "boca", "smile", "sorriso", "lips", "lip", "labios", "labio", "face", "pele", "skin", "age", "idade", "older", "younger", "eyes", "eye", "iris", "irises", "olhos", "olho", "glasses", "oculos", "eyebrows", "eyebrow", "sobrancelhas", "sobrancelha", "nose", "nariz", "ears", "ear", "orelhas", "orelha", "neck", "pescoco")]
     [string]$EditRegion = "auto",
     [int]$MaskDilation = -1,
     [int]$MaskErosion = 0,
@@ -57,33 +57,7 @@ if ($ListPresets) {
 function Resolve-StyleClipSourceDescription {
     param([string]$TargetDescription)
 
-    $target = $TargetDescription.ToLowerInvariant()
-    if ($target -match "\b(blond|blonde|platinum|golden)\s+hair\b") {
-        return "a person with dark hair"
-    }
-    if ($target -match "\b(gray|silver|white)\s+hair\b") {
-        return "a person with dark hair"
-    }
-    if ($target -match "\b(black|dark|brown)\s+hair\b") {
-        return "a person with light hair"
-    }
-    if ($target -match "\b(red|auburn|purple|pink|blue|green)\s+hair\b") {
-        return "a person with natural dark hair"
-    }
-    if ($target -match "\bhair\b") {
-        return "a person with hair"
-    }
-
     return "a person"
-}
-
-function Convert-StyleClipBlondToBlonde {
-    param([string]$Text)
-
-    if (-not $Text) {
-        return $Text
-    }
-    return ($Text -replace "\bblond hair\b", "blonde hair" -replace "\bblond\b", "blonde")
 }
 
 function Resolve-StyleClipLayerBounds {
@@ -95,13 +69,7 @@ function Resolve-StyleClipLayerBounds {
 
     $target = $TargetDescription.ToLowerInvariant()
     if ($LayerMin -lt 0) {
-        if ($target -match "\bhair\b") {
-            $LayerMin = 8
-        }
-        elseif ($target -match "\b(smile|smiling|mouth|lip|lips|lipstick)\b") {
-            $LayerMin = 5
-        }
-        elseif ($target -match "\b(beard|mustache|goatee|facial hair)\b") {
+        if ($target -match "\b(smile|smiling|mouth|lip|lips|lipstick)\b") {
             $LayerMin = 5
         }
         elseif ($target -match "\b(older|younger|old|young|age|wrinkles)\b") {
@@ -112,14 +80,8 @@ function Resolve-StyleClipLayerBounds {
         }
     }
     if ($LayerMax -lt 0) {
-        if ($target -match "\bhair\b") {
-            $LayerMax = 17
-        }
-        elseif ($target -match "\b(smile|smiling|mouth|lip|lips|lipstick)\b") {
+        if ($target -match "\b(smile|smiling|mouth|lip|lips|lipstick)\b") {
             $LayerMax = 10
-        }
-        elseif ($target -match "\b(beard|mustache|goatee|facial hair)\b") {
-            $LayerMax = 12
         }
         elseif ($target -match "\b(older|younger|old|young|age|wrinkles)\b") {
             $LayerMax = 14
@@ -136,14 +98,13 @@ function Resolve-StyleClipEditRegionToTargetRegion {
     param([string]$EditRegion)
 
     switch ($EditRegion) {
-        { $_ -in @("hair", "cabelo") } { return "cabelo" }
         { $_ -in @("mouth", "boca", "smile", "sorriso", "lips", "lip", "labios", "labio") } { return "boca" }
         { $_ -in @("eyes", "eye", "iris", "irises", "olhos", "olho", "glasses", "oculos") } { return "olhos" }
         { $_ -in @("eyebrows", "eyebrow", "sobrancelhas", "sobrancelha") } { return "sobrancelhas" }
         { $_ -in @("nose", "nariz") } { return "nariz" }
         { $_ -in @("ears", "ear", "orelhas", "orelha") } { return "orelhas" }
         { $_ -in @("neck", "pescoco") } { return "pescoco" }
-        { $_ -in @("face", "pele", "skin", "age", "idade", "older", "younger", "beard", "barba", "mustache", "bigode", "goatee", "cavanhaque", "lower_face") } { return "pele" }
+        { $_ -in @("face", "pele", "skin", "age", "idade", "older", "younger") } { return "pele" }
         default { return "" }
     }
 }
@@ -157,9 +118,7 @@ function Resolve-StyleClipPrimaryEditRegion {
 
     if ($EditRegion -ne "auto") {
         switch ($EditRegion) {
-            { $_ -in @("hair", "cabelo") } { return "hair" }
             { $_ -in @("mouth", "boca", "smile", "sorriso", "lips", "lip", "labios", "labio") } { return "mouth" }
-            { $_ -in @("beard", "barba", "mustache", "bigode", "goatee", "cavanhaque", "lower_face") } { return "beard" }
             { $_ -in @("iris", "irises") } { return "iris" }
             { $_ -in @("eyes", "eye", "olhos", "olho", "glasses", "oculos") } { return "eyes" }
             { $_ -in @("eyebrows", "eyebrow", "sobrancelhas", "sobrancelha") } { return "eyebrows" }
@@ -172,8 +131,6 @@ function Resolve-StyleClipPrimaryEditRegion {
     }
 
     $target = $Description.ToLowerInvariant()
-    if ($target -match "\b(hair|bangs)\b") { return "hair" }
-    if ($target -match "\b(beard|mustache|goatee|facial hair)\b") { return "beard" }
     if ($target -match "\b(smile|smiling|mouth|lip|lips|lipstick)\b") { return "mouth" }
     if ($target -match "\b(iris|irises)\b") { return "iris" }
     if ($target -match "\b(blue|green|hazel|brown|gray|grey)\s+(eye|eyes)\b") { return "iris" }
@@ -184,7 +141,6 @@ function Resolve-StyleClipPrimaryEditRegion {
     if ($target -match "\bneck\b") { return "neck" }
     if ($target -match "\b(skin|age|older|younger|wrinkles|freckles|acne|face)\b") { return "face" }
 
-    if ($TargetRegions -contains "cabelo") { return "hair" }
     if ($TargetRegions -contains "boca") { return "mouth" }
     if ($TargetRegions -contains "olhos") { return "eyes" }
     if ($TargetRegions -contains "sobrancelhas") { return "eyebrows" }
@@ -209,8 +165,6 @@ function Resolve-StyleClipRePaintSetting {
     }
 
     switch ($PrimaryEditRegion) {
-        "hair" { return @{ Enabled = $true; Mode = "auto_hair"; StrengthScale = 1.0 } }
-        "beard" { return @{ Enabled = $true; Mode = "auto_beard"; StrengthScale = 0.85 } }
         "mouth" { return @{ Enabled = $true; Mode = "auto_mouth_soft"; StrengthScale = 0.45 } }
         default { return @{ Enabled = $false; Mode = "auto_preserve_fine_details"; StrengthScale = 1.0 } }
     }
@@ -290,34 +244,25 @@ if ($latentShape -ne "1x18x512") {
 
 $targetInput = if ($TargetDescription) { $TargetDescription } else { $Description }
 $resolvedDescription = Resolve-StyleClipPrompt -Description $targetInput -Preset $(if ($targetInput) { @() } else { $Preset })
-$resolvedDescription = Convert-StyleClipBlondToBlonde -Text $resolvedDescription
+$localizationDescription = if ($targetInput) { $targetInput } else { $resolvedDescription }
 if (-not $SourceDescription -or $SourceDescription -eq "auto") {
     $SourceDescription = Resolve-StyleClipSourceDescription -TargetDescription $resolvedDescription
 }
-$SourceDescription = Convert-StyleClipBlondToBlonde -Text $SourceDescription
 $targetLower = $resolvedDescription.ToLowerInvariant()
-$isHairEdit = $targetLower -match "\bhair\b"
 $isMouthEdit = $targetLower -match "\b(smile|smiling|mouth|lip|lips|lipstick)\b"
-$isBeardEdit = $targetLower -match "\b(beard|mustache|goatee|facial hair)\b"
 $isAgeEdit = $targetLower -match "\b(older|younger|old|young|age|wrinkles)\b"
 if ($ClipLossType -eq "auto") {
-    $ClipLossType = if ($isHairEdit -or $isBeardEdit -or $isAgeEdit) { "directional" } else { "absolute" }
+    $ClipLossType = if ($isAgeEdit) { "directional" } else { "absolute" }
 }
 if ($L2Lambda -lt 0) {
-    $L2Lambda = if ($isHairEdit -or $isMouthEdit -or $isBeardEdit -or $isAgeEdit) { 0.05 } else { 0.012 }
+    $L2Lambda = if ($isMouthEdit -or $isAgeEdit) { 0.05 } else { 0.012 }
 }
 if ($LearningRate -lt 0) {
     $LearningRate = 0.02
 }
 if ($EditStrength -lt 0) {
-    if ($isHairEdit) {
-        $EditStrength = 0.04
-    }
-    elseif ($isMouthEdit) {
+    if ($isMouthEdit) {
         $EditStrength = 0.03
-    }
-    elseif ($isBeardEdit) {
-        $EditStrength = 0.035
     }
     elseif ($isAgeEdit) {
         $EditStrength = 0.04
@@ -327,11 +272,8 @@ if ($EditStrength -lt 0) {
     }
 }
 if ($MaxLatentDelta -lt 0) {
-    if ($isHairEdit -or $isMouthEdit) {
+    if ($isMouthEdit) {
         $MaxLatentDelta = 0.08
-    }
-    elseif ($isBeardEdit) {
-        $MaxLatentDelta = 0.10
     }
     elseif ($isAgeEdit) {
         $MaxLatentDelta = 0.12
@@ -498,8 +440,8 @@ if (-not $SkipLocalization -and $targetRegions.Count -gt 0 -and $resolvedCropMet
         "--crop-metadata", $resolvedCropMetadataPath,
         "--output-dir", $localizedDir,
         "--styleclip-edited-image", $editedResultPath,
-        "--description", $resolvedDescription,
-        "--target-description", $resolvedDescription,
+        "--description", $localizationDescription,
+        "--target-description", $localizationDescription,
         "--use-face-parsing", ([string]$UseFaceParsing).ToLowerInvariant(),
         "--use-local-recolor", "false",
         "--use-styleclip", "true",
@@ -625,6 +567,7 @@ $metadata = @{
     input_target_description = $TargetDescription
     input_preset = $Preset
     resolved_description_en = $resolvedDescription
+    localization_description = $localizationDescription
     source_description_en = $SourceDescription
     clip_loss_type = $ClipLossType
     l2_lambda = $L2Lambda
